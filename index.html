@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>文本输入行为记录</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 28px; line-height: 1.5; }
+    h1 { margin: 0 0 10px; font-size: 22px; }
+    .muted { color: #666; font-size: 13px; margin-bottom: 14px; }
+    .grid { display: grid; grid-template-columns: 1fr; gap: 14px; max-width: 980px; }
+    textarea, input[type="text"] {
+      width: 100%; box-sizing: border-box;
+      font-size: 16px; padding: 12px;
+      border: 1px solid #ddd; border-radius: 12px;
+      outline: none;
+    }
+    textarea:focus { border-color: #aaa; }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    button {
+      padding: 9px 12px; border-radius: 10px;
+      border: 1px solid #ddd; background: #fff; cursor: pointer;
+    }
+    button:hover { background: #f7f7f7; }
+    .pill {
+      display: inline-block; padding: 3px 10px; border-radius: 999px;
+      border: 1px solid #eee; background: #fafafa; font-size: 12px;
+    }
+    .card {
+      border: 1px solid #eee; border-radius: 14px; padding: 12px 12px;
+      background: #fff;
+    }
+    .card h2 { font-size: 14px; margin: 0 0 8px; color: #333; }
+    #log {
+      height: 260px; overflow: auto;
+      border: 1px solid #eee; border-radius: 14px;
+      padding: 10px; background: #fcfcfc;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 12px; line-height: 1.4;
+      white-space: pre-wrap;
+    }
+    .k { color: #0b5; }
+    .t { color: #06c; }
+    .w { color: #c60; }
+    .danger { color: #c00; }
+    .small { font-size: 12px; color: #666; }
+    label { user-select: none; }
+  </style>
+</head>
+<body>
+  <h1>文本输入行为记录</h1>
+  <div class="muted">
+    记录范围：input / beforeinput / keydown / composition / paste / copy / cut / selectionchange / focus/blur 等。
+    <br/>说明：不会读取系统剪贴板（除非发生 paste 事件且浏览器允许从事件里取到文本）。
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h2>输入区</h2>
+      <div class="row" style="margin-bottom:10px;">
+        <button id="btnAutoHello">写入“你好”</button>
+        <button id="btnClear">清空</button>
+        <button id="btnExport">导出 JSON</button>
+        <button id="btnResetLog">清空日志</button>
+
+        <span class="pill" id="pillStatus">状态：未开始</span>
+        <label class="pill">
+          <input type="checkbox" id="toggleCaptureContent" />
+          记录文本内容（默认不记录）
+        </label>
+      </div>
+
+      <textarea id="ta" placeholder="在这里输入或粘贴内容..."></textarea>
+
+      <div class="row" style="margin-top:10px;">
+        <span class="pill">字符数：<b id="statLen">0</b></span>
+        <span class="pill">变更次数：<b id="statEdits">0</b></span>
+        <span class="pill">粘贴次数：<b id="statPaste">0</b></span>
+        <span class="pill">Backspace：<b id="statBksp">0</b></span>
+        <span class="pill">输入法合成：<b id="statComp">0</b></span>
+        <span class="pill">选区：<b id="statSel">0-0</b></span>
+      </div>
+
+      <div class="small" style="margin-top:10px;">
+        小提示：如果你想判断“是否一次性灌入”，可观察 beforeinput 的 inputType（如 insertFromPaste / insertText）和单次插入长度。
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>事件日志</h2>
+      <div id="log"></div>
+    </div>
+  </div>
+
+  <script>
+    const ta = document.getElementById("ta");
+    const logEl = document.getElementById("log");
+
+    const pillStatus = document.getElementById("pillStatus");
+    const toggleCaptureContent = document.getElementById("toggleCaptureContent");
+
+    const statLen = document.getElementById("statLen");
+    const statEdits = document.getElementById("statEdits");
+    const statPaste = document.getElementById("statPaste");
+    const statBksp = document.getElementById("statBksp");
+    const statComp = document.getElementById("statComp");
+    const statSel = document.getElementById("statSel");
+
+    const btnAutoHello = document.getElementById("btnAutoHello");
+    const btnClear = document.getElementById("btnClear");
+    const btnExport = document.getElementById("btnExport");
+    const btnResetLog = document.getElementById("btnResetLog");
+
+    // 日志数据（用于导出）
+    const events = [];
+    let edits = 0, pastes = 0, backspaces = 0, compositions = 0;
+
+    function ts() {
+      const d = new Date();
+      return d.toISOString();
+    }
+
+    function safeText(s, maxLen=120) {
+      if (s == null) return "";
+      s = String(s);
+      if (s.length > maxLen) return s.slice(0, maxLen) + "…(" + s.length + ")";
+      return s;
+    }
+
+    function getSelection() {
+      try {
+        return { start: ta.selectionStart ?? 0, end: ta.selectionEnd ?? 0 };
+      } catch {
+        return { start: 0, end: 0 };
+      }
+    }
+
+    function updateStats() {
+      statLen.textContent = ta.value.length;
+      statEdits.textContent = edits;
+      statPaste.textContent = pastes;
+      statBksp.textContent = backspaces;
+      statComp.textContent = compositions;
+      const sel = getSelection();
+      statSel.textContent = `${sel.start}-${sel.end}`;
+    }
+
+    function appendLogLine(line) {
+      logEl.textContent += line + "\n";
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    function logEvent(type, detail = {}) {
+      const sel = getSelection();
+      const entry = {
+        t: ts(),
+        type,
+        ...detail,
+        selection: sel,
+        len: ta.value.length
+      };
+
+      // 默认不记录全文，避免隐私/合规风险；可开关
+      if (toggleCaptureContent.checked) {
+        entry.value = ta.value;
+      }
+
+      events.push(entry);
+
+      // UI 日志（尽量简洁）
+      const pretty = `${entry.t}  [${type}]  ` + JSON.stringify({
+        ...detail,
+        selection: sel,
+        len: entry.len,
+        value: toggleCaptureContent.checked ? safeText(ta.value, 80) : undefined
+      });
+
+      appendLogLine(pretty);
+      updateStats();
+    }
+
+    function setStatus(text) {
+      pillStatus.textContent = "状态：" + text;
+    }
+
+    // --- 事件监听：输入与编辑行为 ---
+
+    ta.addEventListener("focus", () => logEvent("focus"));
+    ta.addEventListener("blur", () => logEvent("blur"));
+
+    document.addEventListener("selectionchange", () => {
+      // 只关心 selection 在 textarea 上的情况
+      if (document.activeElement === ta) logEvent("selectionchange");
+    });
+
+    ta.addEventListener("keydown", (e) => {
+      if (e.key === "Backspace") backspaces++;
+      logEvent("keydown", { key: e.key, code: e.code, ctrl: e.ctrlKey, meta: e.metaKey, alt: e.altKey, shift: e.shiftKey });
+    });
+
+    ta.addEventListener("beforeinput", (e) => {
+      // beforeinput 非常关键：能告诉你“这次变更是什么类型”
+      // 常见 inputType: insertText, deleteContentBackward, insertFromPaste, insertCompositionText, historyUndo...
+      const data = safeText(e.data, 120);
+      logEvent("beforeinput", { inputType: e.inputType, data });
+    });
+
+    ta.addEventListener("input", (e) => {
+      edits++;
+      logEvent("input", { inputType: e.inputType || null });
+    });
+
+    ta.addEventListener("compositionstart", () => {
+      compositions++;
+      logEvent("compositionstart");
+    });
+    ta.addEventListener("compositionupdate", (e) => {
+      logEvent("compositionupdate", { data: safeText(e.data, 120) });
+    });
+    ta.addEventListener("compositionend", (e) => {
+      logEvent("compositionend", { data: safeText(e.data, 120) });
+    });
+
+    ta.addEventListener("paste", (e) => {
+      pastes++;
+      let pasted = "";
+      try {
+        pasted = (e.clipboardData || window.clipboardData)?.getData("text") || "";
+      } catch {
+        pasted = "";
+      }
+      logEvent("paste", { pasted: safeText(pasted, 200), pastedLen: pasted.length });
+    });
+
+    ta.addEventListener("copy", () => logEvent("copy"));
+    ta.addEventListener("cut", () => logEvent("cut"));
+
+    // --- 按钮 ---
+    btnAutoHello.addEventListener("click", () => {
+      ta.value = "你好";
+      ta.focus();
+      ta.setSelectionRange(0, ta.value.length);
+      edits++;
+      logEvent("programmatic_set", { value: "你好" });
+      setStatus("已写入“你好”");
+    });
+
+    btnClear.addEventListener("click", () => {
+      ta.value = "";
+      ta.focus();
+      edits++;
+      logEvent("programmatic_clear");
+      setStatus("已清空");
+    });
+
+    btnResetLog.addEventListener("click", () => {
+      logEl.textContent = "";
+      setStatus("日志已清空（数据仍可导出）");
+    });
+
+    btnExport.addEventListener("click", () => {
+      const payload = {
+        exportedAt: ts(),
+        userAgent: navigator.userAgent,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        captureValue: toggleCaptureContent.checked,
+        stats: {
+          len: ta.value.length,
+          edits, pastes, backspaces, compositions
+        },
+        events
+      };
+
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `input-events-${Date.now()}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+
+      logEvent("export", { bytes: blob.size });
+      setStatus("已导出 JSON");
+    });
+
+    // 初始化
+    window.addEventListener("DOMContentLoaded", () => {
+      setStatus("已开始监听");
+      // 默认写入“你好”（你也可以删掉这一行）
+      ta.value = "你好";
+      ta.setSelectionRange(0, ta.value.length);
+      logEvent("init", { preset: "你好" });
+      updateStats();
+    });
+  </script>
+</body>
+</html>
