@@ -1,3 +1,3 @@
 # TypingGeneAuth
 
-# Warning: InputType: None
+### Warning: InputType: None
