@@ -702,11 +702,10 @@
     const header = segments[0].split(",");
     const keystrokes = segments.slice(1).map(seg => {
       const parts = seg.split(",");
+      // TypingDNA pattern 格式: seekTime,pressTime (两个值)
       return {
-        charCode: parseInt(parts[0]) || 0,
-        seekTime: parseInt(parts[1]) || 0,
-        pressTime: parseInt(parts[2]) || 0,
-        keyCode: parseInt(parts[3]) || 0
+        seekTime: parseInt(parts[0]) || 0,
+        pressTime: parseInt(parts[1]) || 0
       };
     });
     
@@ -855,27 +854,39 @@
     
     // 7. TypingDNA 打字节奏分析
     lines.push("【打字节奏分析 (TypingDNA)】");
+    lines.push("说明: seekTime=按键间隔时间(上一键松开到下一键按下), pressTime=按键持续时间(按下到松开)");
     if (stats.typingdna.recorderReady) {
       // 解析用户名 pattern
       const userPattern = parseTypingDNAPattern(stats.typingdna.lastUserTp);
       if (userPattern && userPattern.keystrokeCount > 0) {
         lines.push(`\n用户名打字特征:`);
         lines.push(`- 记录按键数: ${userPattern.keystrokeCount} 个`);
-        lines.push(`- 平均按键间隔 (seekTime): ${userPattern.avgSeekTime} 毫秒`);
-        lines.push(`- 按键间隔范围: ${userPattern.seekTimeRange.min} - ${userPattern.seekTimeRange.max} 毫秒`);
-        lines.push(`- 按键间隔标准差: ${userPattern.seekTimeStd} 毫秒`);
-        lines.push(`- 长停顿次数 (>500ms): ${userPattern.longPauses} 次`);
         
-        // 显示每个按键的 seekTime 数值
+        // SeekTime 特征
+        lines.push(`\n  [SeekTime 按键间隔]`);
+        lines.push(`  - 平均按键间隔: ${userPattern.avgSeekTime} 毫秒`);
+        lines.push(`  - 按键间隔范围: ${userPattern.seekTimeRange.min} - ${userPattern.seekTimeRange.max} 毫秒`);
+        lines.push(`  - 按键间隔标准差: ${userPattern.seekTimeStd} 毫秒`);
+        lines.push(`  - 长停顿次数 (>500ms): ${userPattern.longPauses} 次`);
         const userSeekTimes = userPattern.keystrokes.map(k => k.seekTime);
-        lines.push(`- 各按键间隔序列 (ms): [${userSeekTimes.join(", ")}]`);
+        lines.push(`  - 各按键间隔序列 (ms): [${userSeekTimes.join(", ")}]`);
         
+        // PressTime 特征
+        lines.push(`\n  [PressTime 按键持续时间]`);
+        lines.push(`  - 平均按键持续时间: ${userPattern.avgPressTime} 毫秒`);
+        lines.push(`  - 按键持续时间范围: ${userPattern.pressTimeRange.min} - ${userPattern.pressTimeRange.max} 毫秒`);
+        lines.push(`  - 按键持续时间标准差: ${userPattern.pressTimeStd} 毫秒`);
+        const userPressTimes = userPattern.keystrokes.map(k => k.pressTime);
+        lines.push(`  - 各按键持续时间序列 (ms): [${userPressTimes.join(", ")}]`);
+        
+        // 异常检测
         if (userPattern.seekTimeStd < 20 && userPattern.keystrokeCount > 3) {
-          lines.push(`  ⚠️ 按键间隔非常均匀，可能是机器人或脚本`);
+          lines.push(`  ⚠️ 按键间隔非常均匀(std<20ms)，可能是机器人或脚本`);
         }
         if (userPattern.avgSeekTime < 30) {
           lines.push(`  ⚠️ 打字速度极快（平均间隔<30ms），超出正常人类速度`);
         }
+
         if (userPattern.longPauses > 3) {
           lines.push(`  ℹ️ 多次长停顿，用户可能在思考或查看`);
         }
@@ -888,21 +899,32 @@
       if (passPattern && passPattern.keystrokeCount > 0) {
         lines.push(`\n密码打字特征:`);
         lines.push(`- 记录按键数: ${passPattern.keystrokeCount} 个`);
-        lines.push(`- 平均按键间隔 (seekTime): ${passPattern.avgSeekTime} 毫秒`);
-        lines.push(`- 按键间隔范围: ${passPattern.seekTimeRange.min} - ${passPattern.seekTimeRange.max} 毫秒`);
-        lines.push(`- 按键间隔标准差: ${passPattern.seekTimeStd} 毫秒`);
-        lines.push(`- 长停顿次数 (>500ms): ${passPattern.longPauses} 次`);
         
-        // 显示每个按键的 seekTime 数值
+        // SeekTime 特征
+        lines.push(`\n  [SeekTime 按键间隔]`);
+        lines.push(`  - 平均按键间隔: ${passPattern.avgSeekTime} 毫秒`);
+        lines.push(`  - 按键间隔范围: ${passPattern.seekTimeRange.min} - ${passPattern.seekTimeRange.max} 毫秒`);
+        lines.push(`  - 按键间隔标准差: ${passPattern.seekTimeStd} 毫秒`);
+        lines.push(`  - 长停顿次数 (>500ms): ${passPattern.longPauses} 次`);
         const passSeekTimes = passPattern.keystrokes.map(k => k.seekTime);
-        lines.push(`- 各按键间隔序列 (ms): [${passSeekTimes.join(", ")}]`);
+        lines.push(`  - 各按键间隔序列 (ms): [${passSeekTimes.join(", ")}]`);
         
+        // PressTime 特征
+        lines.push(`\n  [PressTime 按键持续时间]`);
+        lines.push(`  - 平均按键持续时间: ${passPattern.avgPressTime} 毫秒`);
+        lines.push(`  - 按键持续时间范围: ${passPattern.pressTimeRange.min} - ${passPattern.pressTimeRange.max} 毫秒`);
+        lines.push(`  - 按键持续时间标准差: ${passPattern.pressTimeStd} 毫秒`);
+        const passPressTimes = passPattern.keystrokes.map(k => k.pressTime);
+        lines.push(`  - 各按键持续时间序列 (ms): [${passPressTimes.join(", ")}]`);
+        
+        // 异常检测
         if (passPattern.seekTimeStd < 20 && passPattern.keystrokeCount > 3) {
-          lines.push(`  ⚠️ 按键间隔非常均匀，可能是机器人或脚本`);
+          lines.push(`  ⚠️ 按键间隔非常均匀(std<20ms)，可能是机器人或脚本`);
         }
         if (passPattern.avgSeekTime < 30) {
           lines.push(`  ⚠️ 打字速度极快（平均间隔<30ms），超出正常人类速度`);
         }
+
       } else {
         lines.push(`\n- 密码: 未捕获到打字数据（可能是粘贴、自动填充或IME输入）`);
       }
@@ -1037,26 +1059,43 @@
     
     // 6. Typing Rhythm Analysis (TypingDNA)
     lines.push("[Typing Rhythm Analysis (TypingDNA)]");
+    lines.push("Note: seekTime=key interval (from previous key release to next key press), pressTime=key hold duration (from press to release)");
     if (stats.typingdna.recorderReady) {
       // Parse username pattern
       const userPattern = parseTypingDNAPattern(stats.typingdna.lastUserTp);
       if (userPattern && userPattern.keystrokeCount > 0) {
         lines.push(`\nUsername typing features:`);
         lines.push(`- Recorded keystrokes: ${userPattern.keystrokeCount}`);
-        lines.push(`- Average key interval (seekTime): ${userPattern.avgSeekTime} ms`);
-        lines.push(`- Key interval range: ${userPattern.seekTimeRange.min} - ${userPattern.seekTimeRange.max} ms`);
-        lines.push(`- Key interval std deviation: ${userPattern.seekTimeStd} ms`);
-        lines.push(`- Long pauses (>500ms): ${userPattern.longPauses}`);
         
-        // Show seekTime sequence
+        // SeekTime features
+        lines.push(`\n  [SeekTime - Key Interval]`);
+        lines.push(`  - Average key interval: ${userPattern.avgSeekTime} ms`);
+        lines.push(`  - Key interval range: ${userPattern.seekTimeRange.min} - ${userPattern.seekTimeRange.max} ms`);
+        lines.push(`  - Key interval std deviation: ${userPattern.seekTimeStd} ms`);
+        lines.push(`  - Long pauses (>500ms): ${userPattern.longPauses}`);
         const userSeekTimes = userPattern.keystrokes.map(k => k.seekTime);
-        lines.push(`- Key interval sequence (ms): [${userSeekTimes.join(", ")}]`);
+        lines.push(`  - Key interval sequence (ms): [${userSeekTimes.join(", ")}]`);
         
+        // PressTime features
+        lines.push(`\n  [PressTime - Key Hold Duration]`);
+        lines.push(`  - Average key hold duration: ${userPattern.avgPressTime} ms`);
+        lines.push(`  - Key hold duration range: ${userPattern.pressTimeRange.min} - ${userPattern.pressTimeRange.max} ms`);
+        lines.push(`  - Key hold duration std deviation: ${userPattern.pressTimeStd} ms`);
+        const userPressTimes = userPattern.keystrokes.map(k => k.pressTime);
+        lines.push(`  - Key hold duration sequence (ms): [${userPressTimes.join(", ")}]`);
+        
+        // Anomaly detection
         if (userPattern.seekTimeStd < 20 && userPattern.keystrokeCount > 3) {
-          lines.push(`  ⚠️ Very uniform key intervals, possibly bot or script`);
+          lines.push(`  ⚠️ Very uniform key intervals (std<20ms), possibly bot or script`);
         }
         if (userPattern.avgSeekTime < 30) {
           lines.push(`  ⚠️ Extremely fast typing (avg interval <30ms), exceeds normal human speed`);
+        }
+        if (userPattern.avgPressTime < 20 && userPattern.avgPressTime > 0) {
+          lines.push(`  ⚠️ Very short key hold duration (<20ms), bot signature (humans typically 50-150ms)`);
+        }
+        if (userPattern.pressTimeStd < 10 && userPattern.keystrokeCount > 3) {
+          lines.push(`  ⚠️ Very uniform key hold duration (std<10ms), bot signature`);
         }
         if (userPattern.longPauses > 3) {
           lines.push(`  ℹ️ Multiple long pauses, user may be thinking or looking up`);
@@ -1070,20 +1109,36 @@
       if (passPattern && passPattern.keystrokeCount > 0) {
         lines.push(`\nPassword typing features:`);
         lines.push(`- Recorded keystrokes: ${passPattern.keystrokeCount}`);
-        lines.push(`- Average key interval (seekTime): ${passPattern.avgSeekTime} ms`);
-        lines.push(`- Key interval range: ${passPattern.seekTimeRange.min} - ${passPattern.seekTimeRange.max} ms`);
-        lines.push(`- Key interval std deviation: ${passPattern.seekTimeStd} ms`);
-        lines.push(`- Long pauses (>500ms): ${passPattern.longPauses}`);
         
-        // Show seekTime sequence
+        // SeekTime features
+        lines.push(`\n  [SeekTime - Key Interval]`);
+        lines.push(`  - Average key interval: ${passPattern.avgSeekTime} ms`);
+        lines.push(`  - Key interval range: ${passPattern.seekTimeRange.min} - ${passPattern.seekTimeRange.max} ms`);
+        lines.push(`  - Key interval std deviation: ${passPattern.seekTimeStd} ms`);
+        lines.push(`  - Long pauses (>500ms): ${passPattern.longPauses}`);
         const passSeekTimes = passPattern.keystrokes.map(k => k.seekTime);
-        lines.push(`- Key interval sequence (ms): [${passSeekTimes.join(", ")}]`);
+        lines.push(`  - Key interval sequence (ms): [${passSeekTimes.join(", ")}]`);
         
+        // PressTime features
+        lines.push(`\n  [PressTime - Key Hold Duration]`);
+        lines.push(`  - Average key hold duration: ${passPattern.avgPressTime} ms`);
+        lines.push(`  - Key hold duration range: ${passPattern.pressTimeRange.min} - ${passPattern.pressTimeRange.max} ms`);
+        lines.push(`  - Key hold duration std deviation: ${passPattern.pressTimeStd} ms`);
+        const passPressTimes = passPattern.keystrokes.map(k => k.pressTime);
+        lines.push(`  - Key hold duration sequence (ms): [${passPressTimes.join(", ")}]`);
+        
+        // Anomaly detection
         if (passPattern.seekTimeStd < 20 && passPattern.keystrokeCount > 3) {
-          lines.push(`  ⚠️ Very uniform key intervals, possibly bot or script`);
+          lines.push(`  ⚠️ Very uniform key intervals (std<20ms), possibly bot or script`);
         }
         if (passPattern.avgSeekTime < 30) {
           lines.push(`  ⚠️ Extremely fast typing (avg interval <30ms), exceeds normal human speed`);
+        }
+        if (passPattern.avgPressTime < 20 && passPattern.avgPressTime > 0) {
+          lines.push(`  ⚠️ Very short key hold duration (<20ms), bot signature (humans typically 50-150ms)`);
+        }
+        if (passPattern.pressTimeStd < 10 && passPattern.keystrokeCount > 3) {
+          lines.push(`  ⚠️ Very uniform key hold duration (std<10ms), bot signature`);
         }
       } else {
         lines.push(`\n- Password: No typing data captured (possibly paste, autofill, or IME input)`);
